@@ -157,20 +157,30 @@ func (g *Gate) handleConnect(conn network.Conn) {
 
 // 处理断开连接
 func (g *Gate) handleDisconnect(conn network.Conn) {
-	g.session.RemConn(conn)
+	cid, uid := conn.ID(), conn.UID()
+	log.Infof("[GATE-DEBUG] handleDisconnect() called. cid: %d, uid: %d", cid, uid)
 
-	if cid, uid := conn.ID(), conn.UID(); uid != 0 {
+	g.session.RemConn(conn)
+	log.Infof("[GATE-DEBUG] handleDisconnect() session removed. cid: %d", cid)
+
+	if uid != 0 {
+		log.Infof("[GATE-DEBUG] handleDisconnect() uid != 0, unbinding gate and triggering disconnect. cid: %d, uid: %d", cid, uid)
 		ctx, cancel := context.WithTimeout(g.ctx, g.opts.timeout)
 		_ = g.proxy.unbindGate(ctx, cid, uid)
+		log.Infof("[GATE-DEBUG] handleDisconnect() unbindGate done. cid: %d, uid: %d", cid, uid)
 		g.proxy.trigger(ctx, cluster.Disconnect, cid, uid)
+		log.Infof("[GATE-DEBUG] handleDisconnect() trigger done. cid: %d, uid: %d", cid, uid)
 		cancel()
 	} else {
+		log.Infof("[GATE-DEBUG] handleDisconnect() uid == 0, only triggering disconnect. cid: %d", cid)
 		ctx, cancel := context.WithTimeout(g.ctx, g.opts.timeout)
 		g.proxy.trigger(ctx, cluster.Disconnect, cid, uid)
+		log.Infof("[GATE-DEBUG] handleDisconnect() trigger done (uid=0). cid: %d", cid)
 		cancel()
 	}
 
 	g.wg.Done()
+	log.Infof("[GATE-DEBUG] handleDisconnect() completed. cid: %d, uid: %d", cid, uid)
 }
 
 // 处理接收到的消息

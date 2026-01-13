@@ -335,11 +335,20 @@ func (c *serverConn) doClose(isNeedRecycle bool) error {
 func (c *serverConn) read() {
 	conn := c.conn
 
+	// Set read dIaddeadline based on heartbeat timeout (2x heartbeat interval)
+	// This ensures we don't block forever waiting for data from dead clients
+	readTimeout := 2 * c.connMgr.server.opts.heartbeatInterval
+
 	for {
 		select {
 		case <-c.close:
 			return
 		default:
+			// Set read deadline before each read
+			if readTimeout > 0 {
+				_ = conn.SetReadDeadline(time.Now().Add(readTimeout))
+			}
+
 			msg, err := packet.ReadMessage(conn)
 			if err != nil {
 				_ = c.forceClose(true)
@@ -427,9 +436,10 @@ func (c *serverConn) write() {
 				log.Errorf("write data message error: %v", err)
 			}
 		case <-ticker.C:
-			deadline := xtime.Now().Add(-2 * c.connMgr.server.opts.heartbeatInterval).UnixNano()
+			now := xtime.Now()
+			deadline := now.Add(-2 * c.connMgr.server.opts.heartbeatInterval).UnixNano()
+
 			if c.lastHeartbeatTime.Load() < deadline {
-				log.Debugf("connection heartbeat timeout, cid: %d", c.id)
 				_ = c.forceClose(true)
 				return
 			} else {
